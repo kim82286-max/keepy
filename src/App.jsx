@@ -83,7 +83,10 @@ const GOOGLE_CLIENT_ID = "149148234188-huoergpo44qmp3avok7fcs1slno9h5u7.apps.goo
 function decodeJwt(token) {
   try {
     const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(base64));
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return JSON.parse(new TextDecoder().decode(bytes));
   } catch { return null; }
 }
 
