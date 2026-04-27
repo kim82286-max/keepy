@@ -1,0 +1,38 @@
+{
+  "name": "keepy",
+  "short_name": "keepy",
+  "description": "AI 캡처 정리 — 캡처를 던지면 AI가 알아서 정리",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#EDF0ED",
+  "theme_color": "#7B8DAA",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "images",
+          "accept": ["image/png", "image/jpeg", "image/webp", "image/gif"]
+        }
+      ]
+    }
+  }
+}
