@@ -23,8 +23,8 @@ function addUsage() {
 function canUseAI() {
   return getUsage().count < MONTHLY_LIMIT;
 }
-function ld(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } }
-function sv(k, d) { try { localStorage.setItem(k, JSON.stringify(d)); } catch {} }
+async function ld(k) { try { const r = await window.storage.get(k); return r?.value ? JSON.parse(r.value) : null; } catch { return null; } }
+async function sv(k, d) { try { await window.storage.set(k, JSON.stringify(d)); } catch {} }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
 function compress(file, mw = 800) {
@@ -78,54 +78,12 @@ const TXT2 = "#6E7A6E";
 const TXT3 = "#9BA49B";
 const POPUP = "#F6F8F6";
 
-const GOOGLE_CLIENT_ID = "149148234188-huoergpo44qmp3avok7fcs1slno9h5u7.apps.googleusercontent.com";
-
-function decodeJwt(token) {
-  try {
-    const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return JSON.parse(new TextDecoder().decode(bytes));
-  } catch { return null; }
-}
-
 function LoginScreen({ onLogin }) {
-  const btnRef = useRef(null);
-
-  useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.onload = () => {
-      window.google?.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: (response) => {
-          const payload = decodeJwt(response.credential);
-          if (payload) {
-            onLogin({
-              name: payload.name || "사용자",
-              email: payload.email || "",
-              avatar: payload.picture || null,
-              provider: "google",
-            });
-          }
-        },
-      });
-      window.google?.accounts.id.renderButton(btnRef.current, {
-        type: "standard",
-        theme: "outline",
-        size: "large",
-        text: "continue_with",
-        shape: "pill",
-        width: 320,
-        locale: "ko",
-      });
-    };
-    document.head.appendChild(script);
-    return () => { try { document.head.removeChild(script); } catch {} };
-  }, []);
-
+  const [loading, setLoading] = useState(false);
+  const handle = () => {
+    setLoading(true);
+    setTimeout(() => onLogin({ name: "사용자", email: "user@gmail.com", provider: "google" }), 1200);
+  };
   return (
     <div style={{ minHeight: "100vh", background: BG, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "var(--f)", padding: "40px 24px" }}>
       <div style={{ textAlign: "center", marginBottom: 48 }}>
@@ -136,10 +94,30 @@ function LoginScreen({ onLogin }) {
           스크린샷, 릴스 캡처, 메모를<br/>AI가 알아서 분류하고 정리해요
         </p>
       </div>
-      <div ref={btnRef} style={{ display: "flex", justifyContent: "center" }} />
+      <div style={{ width: "100%", maxWidth: 360 }}>
+        <button onClick={() => !loading && handle()} style={{
+          width: "100%", padding: "15px 20px", borderRadius: 14, border: `1.5px solid ${BDR}`,
+          background: CARD, cursor: loading ? "wait" : "pointer", display: "flex", alignItems: "center",
+          justifyContent: "center", gap: 12, fontFamily: "var(--f)", fontSize: 15, fontWeight: 600, color: TXT,
+        }}>
+          <svg width="20" height="20" viewBox="0 0 24 24">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 001 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          {loading ? (
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 16, height: 16, border: `2px solid ${BDR}`, borderTopColor: "#4285F4", borderRadius: "50%", animation: "spin 0.8s linear infinite", display: "inline-block" }}></span>
+              연결 중...
+            </span>
+          ) : "Google로 시작하기"}
+        </button>
+      </div>
       <p style={{ fontSize: 12, color: TXT3, marginTop: 32, textAlign: "center", lineHeight: 1.6 }}>
         계속하면 서비스 이용약관 및<br/>개인정보 처리방침에 동의하게 됩니다
       </p>
+      <p style={{ fontSize: 11, color: BDR, marginTop: 16 }}>* 데모 모드 — 로그인은 시뮬레이션입니다</p>
     </div>
   );
 }
@@ -152,7 +130,7 @@ function ProfileMenu({ user, onLogout, onClose }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(45,42,35,0.18)", backdropFilter: "blur(8px)", zIndex: 1500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: POPUP, borderRadius: 26, width: "100%", maxWidth: 400, padding: "28px 24px 32px", animation: "fadeIn 0.3s cubic-bezier(0.16,1,0.3,1)", boxShadow: "0 24px 80px rgba(0,0,0,0.08)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
-          {user.avatar ? <img src={user.avatar} style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover" }} referrerPolicy="no-referrer" /> : <div style={{ width: 48, height: 48, borderRadius: "50%", background: `${A}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: A, fontFamily: "var(--f)" }}>{user.name?.slice(0, 1) || "U"}</div>}
+          <div style={{ width: 48, height: 48, borderRadius: "50%", background: `${A}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700, color: A, fontFamily: "var(--f)" }}>{user.name?.slice(0, 1) || "U"}</div>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, color: TXT, fontFamily: "var(--f)" }}>{user.name}</div>
             <div style={{ fontSize: 13, color: TXT2, fontFamily: "var(--f)", marginTop: 2 }}>{user.email}</div>
@@ -223,7 +201,7 @@ function MemoModal({ onSubmit, onClose, busy }) {
   );
 }
 
-function FolderPopup({ analysis, folders, onSelect, onCreate, onClose }) {
+function FolderPopup({ analysis, folders, onSelect, onCreate, onClose, imageData, rawMemo, pendingCount }) {
   const [name, setName] = useState(analysis?.new_folder_suggestion || "");
   const [ic, setIc] = useState("📁");
   const [mode, setMode] = useState("pick");
@@ -232,6 +210,27 @@ function FolderPopup({ analysis, folders, onSelect, onCreate, onClose }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(45,42,35,0.18)", backdropFilter: "blur(8px)", zIndex: 1500, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div onClick={e => e.stopPropagation()} style={{ background: POPUP, borderRadius: "26px 26px 0 0", width: "100%", maxWidth: 520, padding: "24px 24px 36px", maxHeight: "70vh", overflow: "auto", animation: "slideUp 0.4s cubic-bezier(0.16,1,0.3,1)", boxShadow: "0 -12px 48px rgba(0,0,0,0.06)" }}>
         <div style={{ width: 32, height: 3, background: BDR, borderRadius: 2, margin: "0 auto 22px" }} />
+
+        {/* Preview card */}
+        <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "14px 16px", background: BG, borderRadius: 14, marginBottom: 18 }}>
+          {imageData ? (
+            <img src={imageData} alt="" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
+          ) : (
+            <div style={{ width: 56, height: 56, borderRadius: 10, background: BDR, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={TXT3} strokeWidth="1.5"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: TXT, fontFamily: "var(--f)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{analysis?.title || "제목 없음"}</div>
+            <div style={{ fontSize: 12, color: TXT3, fontFamily: "var(--f)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{analysis?.summary?.slice(0, 40) || ""}</div>
+          </div>
+          {pendingCount > 0 && (
+            <div style={{ background: `${A}18`, borderRadius: 8, padding: "4px 10px", flexShrink: 0 }}>
+              <span style={{ fontSize: 11, color: A, fontWeight: 600, fontFamily: "var(--f)" }}>+{pendingCount}</span>
+            </div>
+          )}
+        </div>
+
         {mode === "pick" ? (<>
           <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 600, color: A, fontFamily: "var(--f)", letterSpacing: "0.06em" }}>폴더 선택</p>
           <p style={{ margin: "0 0 18px", fontSize: 14, color: TXT2, fontFamily: "var(--f)" }}>AI 추천 → <span style={{ color: A, fontWeight: 600 }}>{analysis?.suggested_folder || analysis?.new_folder_suggestion || "새 폴더"}</span></p>
@@ -365,25 +364,10 @@ export default function Keepy() {
   const fRef = useRef(null);
   const [drag, setDrag] = useState(false);
 
-  useEffect(() => { const u = ld(SK_U); if (u) setUser(u); setUserLoaded(true); }, []);
-  useEffect(() => { if (!user || !userLoaded) return; const i = ld(SK_I); const f = ld(SK_F); if (i) setItems(i); if (f) setFolders(f); setOk(true); }, [user, userLoaded]);
+  useEffect(() => { (async () => { const u = await ld(SK_U); if (u) setUser(u); setUserLoaded(true); })(); }, []);
+  useEffect(() => { if (!user || !userLoaded) return; (async () => { const [i, f] = await Promise.all([ld(SK_I), ld(SK_F)]); if (i) setItems(i); if (f) setFolders(f); setOk(true); })(); }, [user, userLoaded]);
   useEffect(() => { if (ok) sv(SK_I, items); }, [items, ok]);
   useEffect(() => { if (ok) sv(SK_F, folders); }, [folders, ok]);
-
-
-  // Listen for shared images from service worker
-  useEffect(() => {
-    const handleSWMessage = (event) => {
-      if (event.data?.type === 'shared-images') {
-        const files = event.data.files;
-        if (files?.length > 0 && user) {
-          handleFiles(files);
-        }
-      }
-    };
-    navigator.serviceWorker?.addEventListener('message', handleSWMessage);
-    return () => navigator.serviceWorker?.removeEventListener('message', handleSWMessage);
-  }, [user, folders]);
 
   const flash = m => { setToast({ msg: m, show: true }); setTimeout(() => setToast(t => ({ ...t, show: false })), 2200); };
   const handleLogin = u => { setUser(u); sv(SK_U, u); flash(`환영합니다, ${u.name}님!`); };
@@ -457,8 +441,8 @@ export default function Keepy() {
                 <h1 style={{ fontSize: 28, fontWeight: 300, color: TXT, fontFamily: "var(--f)", letterSpacing: "0.06em" }}>kee<span style={{ fontWeight: 800, color: A }}>py</span></h1>
                 <p style={{ fontSize: 12, color: TXT3, fontFamily: "var(--f)", fontWeight: 500, marginTop: 2 }}>AI 캡처 정리</p>
               </div>
-              <button onClick={() => setShowProfile(true)} style={{ width: 38, height: 38, borderRadius: "50%", background: `${A}20`, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: A, fontFamily: "var(--f)", overflow: "hidden", padding: 0 }}>
-                {user.avatar ? <img src={user.avatar} style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover" }} referrerPolicy="no-referrer" /> : (user.name?.slice(0, 1) || "U")}
+              <button onClick={() => setShowProfile(true)} style={{ width: 38, height: 38, borderRadius: "50%", background: `${A}20`, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: A, fontFamily: "var(--f)" }}>
+                {user.name?.slice(0, 1) || "U"}
               </button>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 20, background: CARD, borderRadius: 14, padding: "12px 18px", border: `1.5px solid ${BDR}` }}>
@@ -519,7 +503,7 @@ export default function Keepy() {
       )}
 
       {memo && <MemoModal onSubmit={handleMemo} onClose={() => setMemo(false)} busy={busy} />}
-      {cur && <FolderPopup analysis={cur.analysis} folders={folders} onSelect={saveIt} onCreate={mkSave} onClose={() => saveIt(null)} />}
+      {cur && <FolderPopup analysis={cur.analysis} folders={folders} onSelect={saveIt} onCreate={mkSave} onClose={() => saveIt(null)} imageData={cur.imageData} rawMemo={cur.rawMemo} pendingCount={pend.length} />}
       {detail && <Detail item={detail} folders={folders} onClose={() => setDetail(null)} onEdit={(id, d) => { setItems(p => p.map(i => i.id === id ? { ...i, ...d } : i)); setDetail(prev => prev ? { ...prev, ...d } : null); }} onCopy={copy} />}
       <Toast msg={toast.msg} show={toast.show} />
     </div>
