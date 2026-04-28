@@ -1,28 +1,90 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
-const SK_I = "keepy-items-v2";
-const SK_F = "keepy-folders-v2";
-const SK_U = "keepy-user-v1";
-const SK_USAGE = "keepy-usage-v1";
-const MONTHLY_LIMIT = 50;
+// ─── Supabase Config ───
+const SUPABASE_URL = "https://lomcltuqhvvwdmvoeiwc.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxvbWNsdHVxaHZ2d2Rtdm9laXdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMjI5MzQsImV4cCI6MjA5Mjg5ODkzNH0.Jv8bnrL2Irco6wsITpt9CD7N1gk23wcrmyZ0QUAb5UM";
+const sb = (path, opts = {}) => fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  ...opts,
+  headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: opts.prefer || "return=representation", ...opts.headers },
+}).then(r => r.ok ? r.json().catch(() => null) : null);
 
-function getUsage() {
+// ─── Supabase DB helpers ───
+async function dbLoadFolders(email) {
+  return await sb(`folders?user_email=eq.${encodeURIComponent(email)}&order=created_at.asc`) || [];
+}
+async function dbLoadItems(email) {
+  return (await sb(`items?user_email=eq.${encodeURIComponent(email)}&order=created_at.desc`) || []).map(i => ({
+    ...i, folderId: i.folder_id, imageData: i.image_data, rawMemo: i.raw_memo, courseSteps: i.course_steps || [],
+    createdAt: i.created_at,
+  }));
+}
+async function dbSaveFolder(email, f) {
+  return await sb("folders", { method: "POST", body: JSON.stringify({ id: f.id, user_email: email, name: f.name, icon: f.icon, created_at: f.createdAt || new Date().toISOString() }) });
+}
+async function dbSaveItem(email, item) {
+  return await sb("items", { method: "POST", body: JSON.stringify({
+    id: item.id, user_email: email, type: item.type, image_data: item.imageData,
+    raw_memo: item.rawMemo, title: item.title, summary: item.summary,
+    tags: item.tags || [], course_steps: item.courseSteps || [],
+    folder_id: item.folderId || null, created_at: item.createdAt || new Date().toISOString(),
+  }) });
+}
+async function dbDeleteItem(email, id) {
+  await sb(`items?id=eq.${id}&user_email=eq.${encodeURIComponent(email)}`, { method: "DELETE" });
+}
+async function dbUpdateItem(email, id, data) {
+  const body = {};
+  if (data.title !== undefined) body.title = data.title;
+  if (data.summary !== undefined) body.summary = data.summary;
+  if (data.folderId !== undefined) body.folder_id = data.folderId;
+  await sb(`items?id=eq.${id}&user_email=eq.${encodeURIComponent(email)}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+async function dbDeleteFolder(email, id) {
+  await sb(`items?folder_id=eq.${id}&user_email=eq.${encodeURIComponent(email)}`, { method: "PATCH", body: JSON.stringify({ folder_id: null }) });
+  await sb(`folders?id=eq.${id}&user_email=eq.${encodeURIComponent(email)}`, { method: "DELETE" });
+}
+async function dbGetUsage(email) {
   const now = new Date();
   const key = `${now.getFullYear()}-${now.getMonth() + 1}`;
-  const usage = ld(SK_USAGE) || {};
-  return { count: usage[key] || 0, key, usage };
+  const rows = await sb(`usage?user_email=eq.${encodeURIComponent(email)}&month_key=eq.${key}`) || [];
+  return { count: rows[0]?.count || 0, key };
 }
-
-function addUsage() {
-  const { count, key, usage } = getUsage();
-  usage[key] = count + 1;
-  sv(SK_USAGE, usage);
+async function dbAddUsage(email) {
+  const { count, key } = await dbGetUsage(email);
+  if (count === 0) {
+    await sb("usage", { method: "POST", body: JSON.stringify({ user_email: email, month_key: key, count: 1 }), prefer: "return=minimal" });
+  } else {
+    await sb(`usage?user_email=eq.${encodeURIComponent(email)}&month_key=eq.${key}`, { method: "PATCH", body: JSON.stringify({ count: count + 1 }) });
+  }
   return count + 1;
 }
 
-function canUseAI() {
-  return getUsage().count < MONTHLY_LIMIT;
+// ─── Migration ───
+async function migrateLocalToSupabase(email) {
+  const migrated = localStorage.getItem("keepy-migrated");
+  if (migrated === email) return;
+
+  const oldItems = JSON.parse(localStorage.getItem("keepy-items-v2") || "null");
+  const oldFolders = JSON.parse(localStorage.getItem("keepy-folders-v2") || "null");
+
+  if (oldFolders?.length) {
+    for (const f of oldFolders) { await dbSaveFolder(email, f); }
+  }
+  if (oldItems?.length) {
+    for (const item of oldItems) { await dbSaveItem(email, item); }
+  }
+
+  if (oldItems?.length || oldFolders?.length) {
+    localStorage.setItem("keepy-migrated", email);
+    return { items: oldItems?.length || 0, folders: oldFolders?.length || 0 };
+  }
+  localStorage.setItem("keepy-migrated", email);
+  return null;
 }
+
+// ─── Constants ───
+const MONTHLY_LIMIT = 50;
+const SK_U = "keepy-user-v1";
 function ld(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } }
 function sv(k, d) { try { localStorage.setItem(k, JSON.stringify(d)); } catch {} }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -92,7 +154,6 @@ function decodeJwt(token) {
 
 function LoginScreen({ onLogin }) {
   const btnRef = useRef(null);
-
   useEffect(() => {
     const script = document.createElement("script");
     script.src = "https://accounts.google.com/gsi/client";
@@ -102,25 +163,10 @@ function LoginScreen({ onLogin }) {
         client_id: GOOGLE_CLIENT_ID,
         callback: (response) => {
           const payload = decodeJwt(response.credential);
-          if (payload) {
-            onLogin({
-              name: payload.name || "사용자",
-              email: payload.email || "",
-              avatar: payload.picture || null,
-              provider: "google",
-            });
-          }
+          if (payload) onLogin({ name: payload.name || "사용자", email: payload.email || "", avatar: payload.picture || null, provider: "google" });
         },
       });
-      window.google?.accounts.id.renderButton(btnRef.current, {
-        type: "standard",
-        theme: "outline",
-        size: "large",
-        text: "continue_with",
-        shape: "pill",
-        width: 320,
-        locale: "ko",
-      });
+      window.google?.accounts.id.renderButton(btnRef.current, { type: "standard", theme: "outline", size: "large", text: "continue_with", shape: "pill", width: 320, locale: "ko" });
     };
     document.head.appendChild(script);
     return () => { try { document.head.removeChild(script); } catch {} };
@@ -129,25 +175,18 @@ function LoginScreen({ onLogin }) {
   return (
     <div style={{ minHeight: "100vh", background: BG, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "var(--f)", padding: "40px 24px" }}>
       <div style={{ textAlign: "center", marginBottom: 48 }}>
-        <h1 style={{ fontSize: 42, fontWeight: 300, color: TXT, letterSpacing: "0.06em", margin: "0 0 8px" }}>
-          kee<span style={{ fontWeight: 800, color: A }}>py</span>
-        </h1>
-        <p style={{ fontSize: 14, color: TXT2, lineHeight: 1.6 }}>
-          스크린샷, 릴스 캡처, 메모를<br/>AI가 알아서 분류하고 정리해요
-        </p>
+        <h1 style={{ fontSize: 42, fontWeight: 300, color: TXT, letterSpacing: "0.06em", margin: "0 0 8px" }}>kee<span style={{ fontWeight: 800, color: A }}>py</span></h1>
+        <p style={{ fontSize: 14, color: TXT2, lineHeight: 1.6 }}>스크린샷, 릴스 캡처, 메모를<br/>AI가 알아서 분류하고 정리해요</p>
       </div>
       <div ref={btnRef} style={{ display: "flex", justifyContent: "center" }} />
-      <p style={{ fontSize: 12, color: TXT3, marginTop: 32, textAlign: "center", lineHeight: 1.6 }}>
-        계속하면 서비스 이용약관 및<br/>개인정보 처리방침에 동의하게 됩니다
-      </p>
+      <p style={{ fontSize: 12, color: TXT3, marginTop: 32, textAlign: "center", lineHeight: 1.6 }}>계속하면 서비스 이용약관 및<br/>개인정보 처리방침에 동의하게 됩니다</p>
     </div>
   );
 }
 
-function ProfileMenu({ user, onLogout, onClose }) {
-  const { count } = getUsage();
-  const pct = Math.min((count / MONTHLY_LIMIT) * 100, 100);
-  const isNear = count >= MONTHLY_LIMIT * 0.8;
+function ProfileMenu({ user, usageCount, onLogout, onClose }) {
+  const pct = Math.min((usageCount / MONTHLY_LIMIT) * 100, 100);
+  const isNear = usageCount >= MONTHLY_LIMIT * 0.8;
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(45,42,35,0.18)", backdropFilter: "blur(8px)", zIndex: 1500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: POPUP, borderRadius: 26, width: "100%", maxWidth: 400, padding: "28px 24px 32px", animation: "fadeIn 0.3s cubic-bezier(0.16,1,0.3,1)", boxShadow: "0 24px 80px rgba(0,0,0,0.08)" }}>
@@ -165,14 +204,18 @@ function ProfileMenu({ user, onLogout, onClose }) {
         <div style={{ background: BG, borderRadius: 14, padding: "16px 18px", marginBottom: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: TXT, fontFamily: "var(--f)" }}>이번 달 AI 사용량</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: isNear ? "#B8544F" : A, fontFamily: "var(--f)" }}>{count} / {MONTHLY_LIMIT}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: isNear ? "#B8544F" : A, fontFamily: "var(--f)" }}>{usageCount} / {MONTHLY_LIMIT}</span>
           </div>
           <div style={{ width: "100%", height: 6, borderRadius: 3, background: BDR }}>
             <div style={{ width: `${pct}%`, height: "100%", borderRadius: 3, background: isNear ? "#B8544F" : A, transition: "width 0.3s" }} />
           </div>
           <p style={{ fontSize: 11, color: TXT3, fontFamily: "var(--f)", marginTop: 8 }}>
-            {count >= MONTHLY_LIMIT ? "한도를 모두 사용했어요. 다음 달에 초기화됩니다" : `${MONTHLY_LIMIT - count}회 남았어요 · 매월 1일 초기화`}
+            {usageCount >= MONTHLY_LIMIT ? "한도를 모두 사용했어요. 다음 달에 초기화됩니다" : `${MONTHLY_LIMIT - usageCount}회 남았어요 · 매월 1일 초기화`}
           </p>
+        </div>
+        <div style={{ background: BG, borderRadius: 14, padding: "12px 18px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 13 }}>☁️</span>
+          <span style={{ fontSize: 12, color: TXT2, fontFamily: "var(--f)" }}>Supabase 클라우드에 안전하게 저장됨</span>
         </div>
         <button onClick={onLogout} style={{ width: "100%", padding: "15px", borderRadius: 14, border: "1.5px solid #E8C8C8", background: "#FDF5F5", cursor: "pointer", color: "#B8544F", fontSize: 15, fontWeight: 600, fontFamily: "var(--f)" }}>로그아웃</button>
       </div>
@@ -233,28 +276,20 @@ function FolderPopup({ analysis, folders, onSelect, onCreate, onClose, imageData
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(45,42,35,0.18)", backdropFilter: "blur(8px)", zIndex: 1500, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div onClick={e => e.stopPropagation()} style={{ background: POPUP, borderRadius: "26px 26px 0 0", width: "100%", maxWidth: 520, padding: "24px 24px 36px", maxHeight: "70vh", overflow: "auto", animation: "slideUp 0.4s cubic-bezier(0.16,1,0.3,1)", boxShadow: "0 -12px 48px rgba(0,0,0,0.06)" }}>
         <div style={{ width: 32, height: 3, background: BDR, borderRadius: 2, margin: "0 auto 22px" }} />
-
-        {/* Preview card */}
         {isBatch ? (
           <div style={{ padding: "14px 16px", background: BG, borderRadius: 14, marginBottom: 18 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: TXT, fontFamily: "var(--f)" }}>{batchImages.length}장 일괄 저장</span>
-              <span style={{ fontSize: 12, color: A, fontWeight: 600, fontFamily: "var(--f)" }}>폴더 한 번만 선택하면 돼요</span>
+              <span style={{ fontSize: 12, color: A, fontWeight: 600, fontFamily: "var(--f)" }}>폴더 한 번만 선택</span>
             </div>
             <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
-              {batchImages.slice(0, 8).map((img, i) => (
-                <img key={i} src={img} alt="" style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover", flexShrink: 0, border: `1px solid ${BDR}` }} />
-              ))}
-              {batchImages.length > 8 && (
-                <div style={{ width: 48, height: 48, borderRadius: 8, background: BDR, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 12, color: TXT2, fontWeight: 600, fontFamily: "var(--f)" }}>+{batchImages.length - 8}</div>
-              )}
+              {batchImages.slice(0, 8).map((img, i) => (<img key={i} src={img} alt="" style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover", flexShrink: 0, border: `1px solid ${BDR}` }} />))}
+              {batchImages.length > 8 && (<div style={{ width: 48, height: 48, borderRadius: 8, background: BDR, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 12, color: TXT2, fontWeight: 600 }}>+{batchImages.length - 8}</div>)}
             </div>
           </div>
         ) : (
           <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "14px 16px", background: BG, borderRadius: 14, marginBottom: 18 }}>
-            {imageData ? (
-              <img src={imageData} alt="" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
-            ) : (
+            {imageData ? (<img src={imageData} alt="" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />) : (
               <div style={{ width: 56, height: 56, borderRadius: 10, background: BDR, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={TXT3} strokeWidth="1.5"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
               </div>
@@ -263,40 +298,21 @@ function FolderPopup({ analysis, folders, onSelect, onCreate, onClose, imageData
               <div style={{ fontSize: 14, fontWeight: 700, color: TXT, fontFamily: "var(--f)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{analysis?.title || "제목 없음"}</div>
               <div style={{ fontSize: 12, color: TXT3, fontFamily: "var(--f)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{analysis?.summary?.slice(0, 40) || ""}</div>
             </div>
-            {pendingCount > 0 && (
-              <div style={{ background: `${A}18`, borderRadius: 8, padding: "4px 10px", flexShrink: 0 }}>
-                <span style={{ fontSize: 11, color: A, fontWeight: 600, fontFamily: "var(--f)" }}>+{pendingCount}</span>
-              </div>
-            )}
+            {pendingCount > 0 && (<div style={{ background: `${A}18`, borderRadius: 8, padding: "4px 10px", flexShrink: 0 }}><span style={{ fontSize: 11, color: A, fontWeight: 600, fontFamily: "var(--f)" }}>+{pendingCount}</span></div>)}
           </div>
         )}
-
         {mode === "pick" ? (<>
           <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 600, color: A, fontFamily: "var(--f)", letterSpacing: "0.06em" }}>폴더 선택</p>
           <p style={{ margin: "0 0 18px", fontSize: 14, color: TXT2, fontFamily: "var(--f)" }}>AI 추천 → <span style={{ color: A, fontWeight: 600 }}>{analysis?.suggested_folder || analysis?.new_folder_suggestion || "새 폴더"}</span></p>
-          {sug && (
-            <button onClick={() => onSelect(sug.id)} style={{ width: "100%", padding: "16px 18px", borderRadius: 14, border: `1.5px solid ${A}33`, background: `${A}0A`, cursor: "pointer", marginBottom: 8, display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
-              <div style={{ width: 40, height: 40, borderRadius: 12, background: `${A}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{sug.icon}</div>
-              <div><div style={{ fontSize: 15, fontWeight: 600, color: TXT, fontFamily: "var(--f)" }}>{sug.name}</div><div style={{ fontSize: 11, color: A, fontFamily: "var(--f)", fontWeight: 500, marginTop: 2 }}>AI 추천</div></div>
-            </button>
-          )}
+          {sug && (<button onClick={() => onSelect(sug.id)} style={{ width: "100%", padding: "16px 18px", borderRadius: 14, border: `1.5px solid ${A}33`, background: `${A}0A`, cursor: "pointer", marginBottom: 8, display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}><div style={{ width: 40, height: 40, borderRadius: 12, background: `${A}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{sug.icon}</div><div><div style={{ fontSize: 15, fontWeight: 600, color: TXT, fontFamily: "var(--f)" }}>{sug.name}</div><div style={{ fontSize: 11, color: A, fontFamily: "var(--f)", fontWeight: 500, marginTop: 2 }}>AI 추천</div></div></button>)}
           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-            {folders.filter(f => f.id !== sug?.id).map(f => (
-              <button key={f.id} onClick={() => onSelect(f.id)} style={{ width: "100%", padding: "14px 18px", borderRadius: 12, border: `1px solid ${BDR}`, background: CARD, cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>{f.icon}</div>
-                <span style={{ fontSize: 14, fontWeight: 500, color: TXT, fontFamily: "var(--f)" }}>{f.name}</span>
-              </button>
-            ))}
+            {folders.filter(f => f.id !== sug?.id).map(f => (<button key={f.id} onClick={() => onSelect(f.id)} style={{ width: "100%", padding: "14px 18px", borderRadius: 12, border: `1px solid ${BDR}`, background: CARD, cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}><div style={{ width: 36, height: 36, borderRadius: 10, background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>{f.icon}</div><span style={{ fontSize: 14, fontWeight: 500, color: TXT, fontFamily: "var(--f)" }}>{f.name}</span></button>))}
           </div>
           <button onClick={() => setMode("new")} style={{ width: "100%", padding: "14px", borderRadius: 12, border: `1.5px dashed ${BDR}`, background: "transparent", cursor: "pointer", color: TXT3, fontSize: 14, fontWeight: 600, fontFamily: "var(--f)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>+ 새 폴더</button>
         </>) : (<>
           <p style={{ margin: "0 0 18px", fontSize: 11, fontWeight: 600, color: A, fontFamily: "var(--f)", letterSpacing: "0.06em" }}>새 폴더 만들기</p>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="폴더 이름" autoFocus
-            style={{ width: "100%", padding: "14px 18px", borderRadius: 12, background: BG, border: `1.5px solid ${BDR}`, color: TXT, fontSize: 16, fontWeight: 600, fontFamily: "var(--f)", outline: "none", boxSizing: "border-box", marginBottom: 16 }}
-            onFocus={e => e.target.style.borderColor = A} onBlur={e => e.target.style.borderColor = BDR} />
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 22 }}>
-            {ICONS.map(i => (<button key={i} onClick={() => setIc(i)} style={{ width: 40, height: 40, borderRadius: 10, border: ic === i ? `2px solid ${A}` : `1.5px solid ${BDR}`, background: ic === i ? `${A}12` : CARD, cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>{i}</button>))}
-          </div>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="폴더 이름" autoFocus style={{ width: "100%", padding: "14px 18px", borderRadius: 12, background: BG, border: `1.5px solid ${BDR}`, color: TXT, fontSize: 16, fontWeight: 600, fontFamily: "var(--f)", outline: "none", boxSizing: "border-box", marginBottom: 16 }} onFocus={e => e.target.style.borderColor = A} onBlur={e => e.target.style.borderColor = BDR} />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 22 }}>{ICONS.map(i => (<button key={i} onClick={() => setIc(i)} style={{ width: 40, height: 40, borderRadius: 10, border: ic === i ? `2px solid ${A}` : `1.5px solid ${BDR}`, background: ic === i ? `${A}12` : CARD, cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>{i}</button>))}</div>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={() => setMode("pick")} style={{ flex: 1, padding: "14px", borderRadius: 12, border: `1.5px solid ${BDR}`, background: CARD, color: TXT2, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "var(--f)" }}>뒤로</button>
             <button onClick={() => name.trim() && onCreate(name.trim(), ic)} style={{ flex: 2, padding: "14px", borderRadius: 12, border: "none", background: name.trim() ? A : BDR, color: name.trim() ? "#fff" : TXT3, fontSize: 14, fontWeight: 600, cursor: name.trim() ? "pointer" : "default", fontFamily: "var(--f)" }}>만들기</button>
@@ -314,16 +330,8 @@ function Detail({ item, folders, onClose, onEdit, onCopy }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(45,42,35,0.15)", backdropFilter: "blur(12px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: POPUP, borderRadius: 26, maxWidth: 460, width: "100%", maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.08)" }}>
-        {item.imageData ? (
-          <div style={{ position: "relative" }}>
-            <img src={item.imageData} alt="" style={{ width: "100%", maxHeight: 260, objectFit: "contain", background: BG, borderRadius: "26px 26px 0 0" }} />
-            <button onClick={onClose} style={{ position: "absolute", top: 16, right: 16, background: "rgba(248,250,248,0.9)", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", color: TXT2, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
-          </div>
-        ) : (
-          <div style={{ display: "flex", justifyContent: "flex-end", padding: "18px 18px 0" }}>
-            <button onClick={onClose} style={{ background: BG, border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", color: TXT2, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
-          </div>
-        )}
+        {item.imageData ? (<div style={{ position: "relative" }}><img src={item.imageData} alt="" style={{ width: "100%", maxHeight: 260, objectFit: "contain", background: BG, borderRadius: "26px 26px 0 0" }} /><button onClick={onClose} style={{ position: "absolute", top: 16, right: 16, background: "rgba(248,250,248,0.9)", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", color: TXT2, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button></div>
+        ) : (<div style={{ display: "flex", justifyContent: "flex-end", padding: "18px 18px 0" }}><button onClick={onClose} style={{ background: BG, border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", color: TXT2, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button></div>)}
         <div style={{ padding: item.imageData ? "20px 26px 28px" : "8px 26px 28px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
             {fo && (<div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 14px", background: BG, borderRadius: 8 }}><span style={{ fontSize: 13 }}>{fo.icon}</span><span style={{ fontSize: 12, color: TXT2, fontWeight: 600, fontFamily: "var(--f)" }}>{fo.name}</span></div>)}
@@ -332,10 +340,7 @@ function Detail({ item, folders, onClose, onEdit, onCopy }) {
           {ed ? (<>
             <input value={d.title} onChange={e => setD({ ...d, title: e.target.value })} style={{ width: "100%", background: BG, border: `1.5px solid ${BDR}`, borderRadius: 12, padding: "12px 16px", color: TXT, fontSize: 18, fontWeight: 700, fontFamily: "var(--f)", outline: "none", marginBottom: 10, boxSizing: "border-box" }} />
             <textarea value={d.summary} onChange={e => setD({ ...d, summary: e.target.value })} rows={5} style={{ width: "100%", background: BG, border: `1.5px solid ${BDR}`, borderRadius: 12, padding: "12px 16px", color: TXT2, fontSize: 14, lineHeight: 1.8, fontFamily: "var(--f)", outline: "none", resize: "vertical", marginBottom: 10, boxSizing: "border-box" }} />
-            <select value={d.folderId || ""} onChange={e => setD({ ...d, folderId: e.target.value || null })} style={{ width: "100%", background: BG, border: `1.5px solid ${BDR}`, borderRadius: 12, padding: "12px 16px", color: TXT2, fontSize: 14, fontFamily: "var(--f)", outline: "none", marginBottom: 16, boxSizing: "border-box" }}>
-              <option value="">폴더 없음</option>
-              {folders.map(f => <option key={f.id} value={f.id}>{f.icon} {f.name}</option>)}
-            </select>
+            <select value={d.folderId || ""} onChange={e => setD({ ...d, folderId: e.target.value || null })} style={{ width: "100%", background: BG, border: `1.5px solid ${BDR}`, borderRadius: 12, padding: "12px 16px", color: TXT2, fontSize: 14, fontFamily: "var(--f)", outline: "none", marginBottom: 16, boxSizing: "border-box" }}><option value="">폴더 없음</option>{folders.map(f => <option key={f.id} value={f.id}>{f.icon} {f.name}</option>)}</select>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setEd(false)} style={{ flex: 1, padding: "13px", borderRadius: 12, border: `1.5px solid ${BDR}`, background: CARD, color: TXT2, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "var(--f)" }}>취소</button>
               <button onClick={() => { onEdit(item.id, d); setEd(false); }} style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none", background: A, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "var(--f)" }}>저장</button>
@@ -386,6 +391,7 @@ function Card({ item, folder, onClick, onDel }) {
   );
 }
 
+// ─── Main App ───
 export default function Keepy() {
   const [user, setUser] = useState(null);
   const [userLoaded, setUserLoaded] = useState(false);
@@ -402,23 +408,35 @@ export default function Keepy() {
   const [ok, setOk] = useState(false);
   const [memo, setMemo] = useState(false);
   const [aiMode, setAiMode] = useState(true);
+  const [usageCount, setUsageCount] = useState(0);
+  const [loading, setLoading] = useState(false);
   const fRef = useRef(null);
   const [drag, setDrag] = useState(false);
 
+  // Load user from localStorage
   useEffect(() => { const u = ld(SK_U); if (u) setUser(u); setUserLoaded(true); }, []);
-  useEffect(() => { if (!user || !userLoaded) return; const i = ld(SK_I); const f = ld(SK_F); if (i) setItems(i); if (f) setFolders(f); setOk(true); }, [user, userLoaded]);
-  useEffect(() => { if (ok) sv(SK_I, items); }, [items, ok]);
-  useEffect(() => { if (ok) sv(SK_F, folders); }, [folders, ok]);
 
+  // Load data from Supabase when user is set
+  useEffect(() => {
+    if (!user || !userLoaded) return;
+    setLoading(true);
+    (async () => {
+      // Migration
+      const migResult = await migrateLocalToSupabase(user.email);
+      if (migResult) { console.log(`Migrated ${migResult.items} items, ${migResult.folders} folders`); }
+      // Load from Supabase
+      const [f, i, u] = await Promise.all([dbLoadFolders(user.email), dbLoadItems(user.email), dbGetUsage(user.email)]);
+      setFolders(f || []); setItems(i || []); setUsageCount(u.count);
+      setOk(true); setLoading(false);
+    })();
+  }, [user, userLoaded]);
 
   // Listen for shared images from service worker
   useEffect(() => {
     const handleSWMessage = (event) => {
       if (event.data?.type === 'shared-images') {
         const files = event.data.files;
-        if (files?.length > 0 && user) {
-          handleFiles(files);
-        }
+        if (files?.length > 0 && user) handleFiles(files);
       }
     };
     navigator.serviceWorker?.addEventListener('message', handleSWMessage);
@@ -433,31 +451,29 @@ export default function Keepy() {
     const imgs = Array.from(files).filter(f => f.type.startsWith("image/"));
     if (!imgs.length) return;
     const comp = await Promise.all(imgs.map(f => compress(f)));
-
     if (!aiMode) {
-      // AI off: batch all — show folder popup once, save all to same folder
       const title = `${comp.length}장 · ${new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
       setCur({ batchImages: comp, imageData: comp[0], analysis: { title, summary: `${comp.length}장의 캡처`, tags: [], suggested_folder: null, new_folder_suggestion: null, is_course: false, course_steps: null } });
       return;
     }
-
-    if (!canUseAI()) { flash(`이번 달 AI 분석 한도(${MONTHLY_LIMIT}회)를 모두 사용했어요`); return; }
+    if (usageCount >= MONTHLY_LIMIT) { flash(`이번 달 AI 분석 한도(${MONTHLY_LIMIT}회)를 모두 사용했어요`); return; }
     setPend(comp.slice(1)); setBusy(true);
-    addUsage();
+    const newCount = await dbAddUsage(user.email); setUsageCount(newCount);
     const a = await analyzeImg(comp[0], folders);
     setCur({ imageData: comp[0], analysis: a }); setBusy(false);
   };
+
   const handleMemo = async t => {
-    if (!canUseAI()) { flash(`이번 달 AI 분석 한도(${MONTHLY_LIMIT}회)를 모두 사용했어요`); setMemo(false); return; }
-    setMemo(false); setBusy(true); addUsage();
+    if (usageCount >= MONTHLY_LIMIT) { flash(`이번 달 AI 분석 한도(${MONTHLY_LIMIT}회)를 모두 사용했어요`); setMemo(false); return; }
+    setMemo(false); setBusy(true);
+    const newCount = await dbAddUsage(user.email); setUsageCount(newCount);
     const a = await tidyMemo(t, folders); setCur({ rawMemo: t, analysis: a }); setBusy(false);
   };
 
-  const saveIt = fid => {
+  const saveIt = async fid => {
     if (!cur) return;
     const { imageData, rawMemo, analysis, batchImages } = cur;
 
-    // Batch save (AI off, multiple images)
     if (batchImages && batchImages.length > 0) {
       const now = new Date();
       const newItems = batchImages.map((img, i) => ({
@@ -466,27 +482,54 @@ export default function Keepy() {
         summary: "", tags: [], courseSteps: [], folderId: fid,
         createdAt: new Date(now.getTime() + i).toISOString(),
       }));
+      for (const item of newItems) { await dbSaveItem(user.email, item); }
       setItems(p => [...newItems.reverse(), ...p]);
       setCur(null); flash(`${batchImages.length}장 일괄 저장 완료 ✓`);
       return;
     }
 
-    // Single save (AI on)
-    setItems(p => [{ id: uid(), type: imageData ? "capture" : "memo", imageData: imageData || null, rawMemo: rawMemo || null, title: analysis?.title || "제목 없음", summary: analysis?.summary || "", tags: analysis?.tags || [], courseSteps: analysis?.is_course ? (analysis?.course_steps || []) : [], folderId: fid, createdAt: new Date().toISOString() }, ...p]);
+    const newItem = { id: uid(), type: imageData ? "capture" : "memo", imageData: imageData || null, rawMemo: rawMemo || null, title: analysis?.title || "제목 없음", summary: analysis?.summary || "", tags: analysis?.tags || [], courseSteps: analysis?.is_course ? (analysis?.course_steps || []) : [], folderId: fid, createdAt: new Date().toISOString() };
+    await dbSaveItem(user.email, newItem);
+    setItems(p => [newItem, ...p]);
     setCur(null); flash("저장 완료 ✓");
+
     if (pend.length > 0) {
       const [n, ...r] = pend; setPend(r);
       if (!aiMode) {
         const title = new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
         setCur({ imageData: n, analysis: { title, summary: "", tags: [], suggested_folder: null, new_folder_suggestion: null, is_course: false, course_steps: null } });
       } else {
-        if (!canUseAI()) { flash(`이번 달 한도 도달 — 나머지 ${pend.length + 1}장은 건너뛰었어요`); setPend([]); return; }
-        setBusy(true); addUsage();
+        if (usageCount >= MONTHLY_LIMIT) { flash(`이번 달 한도 도달`); setPend([]); return; }
+        setBusy(true); const nc = await dbAddUsage(user.email); setUsageCount(nc);
         analyzeImg(n, folders).then(a => { setCur({ imageData: n, analysis: a }); setBusy(false); });
       }
     }
   };
-  const mkSave = (n, ic) => { const nf = { id: uid(), name: n, icon: ic, createdAt: new Date().toISOString() }; setFolders(p => [...p, nf]); saveIt(nf.id); };
+
+  const mkSave = async (n, ic) => {
+    const nf = { id: uid(), name: n, icon: ic, createdAt: new Date().toISOString() };
+    await dbSaveFolder(user.email, nf);
+    setFolders(p => [...p, nf]);
+    saveIt(nf.id);
+  };
+
+  const handleDelete = async id => {
+    await dbDeleteItem(user.email, id);
+    setItems(p => p.filter(i => i.id !== id));
+  };
+
+  const handleEdit = async (id, d) => {
+    await dbUpdateItem(user.email, id, d);
+    setItems(p => p.map(i => i.id === id ? { ...i, ...d } : i));
+    setDetail(prev => prev ? { ...prev, ...d } : null);
+  };
+
+  const handleDeleteFolder = async fid => {
+    await dbDeleteFolder(user.email, fid);
+    setFolders(p => p.filter(f => f.id !== fid));
+    setItems(p => p.map(i => i.folderId === fid ? { ...i, folderId: null } : i));
+    setSel(null); flash("삭제됨");
+  };
 
   const copy = item => {
     const f = folders.find(f => f.id === item.folderId);
@@ -519,7 +562,12 @@ export default function Keepy() {
         input::placeholder, textarea::placeholder { color: ${TXT3}; }
       `}</style>
 
-      {!user ? <LoginScreen onLogin={handleLogin} /> : (
+      {!user ? <LoginScreen onLogin={handleLogin} /> : loading ? (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 16 }}>
+          <div style={{ width: 28, height: 28, border: `3px solid ${BDR}`, borderTopColor: A, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+          <span style={{ fontSize: 14, color: TXT2, fontFamily: "var(--f)" }}>데이터 불러오는 중...</span>
+        </div>
+      ) : (
         <div style={{ paddingBottom: 120 }}>
           <div style={{ padding: "40px 26px 20px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -533,8 +581,7 @@ export default function Keepy() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 20, background: CARD, borderRadius: 14, padding: "12px 18px", border: `1.5px solid ${BDR}` }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={TXT3} strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              <input type="text" placeholder="검색" value={q} onChange={e => setQ(e.target.value)}
-                style={{ background: "none", border: "none", outline: "none", flex: 1, color: TXT, fontSize: 14, fontFamily: "var(--f)", fontWeight: 500 }} />
+              <input type="text" placeholder="검색" value={q} onChange={e => setQ(e.target.value)} style={{ background: "none", border: "none", outline: "none", flex: 1, color: TXT, fontSize: 14, fontFamily: "var(--f)", fontWeight: 500 }} />
               {q && <button onClick={() => setQ("")} style={{ background: BDR, border: "none", borderRadius: "50%", width: 20, height: 20, color: TXT2, fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>}
             </div>
           </div>
@@ -547,7 +594,7 @@ export default function Keepy() {
               return (
                 <div key={f.id} style={{ position: "relative" }}>
                   <button onClick={() => setSel(a ? null : f.id)} style={{ padding: "7px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: a ? 700 : 500, whiteSpace: "nowrap", fontFamily: "var(--f)", background: a ? A : SUB, color: a ? "#fff" : TXT2 }}>{f.icon} {f.name}{c > 0 ? ` ${c}` : ""}</button>
-                  {a && <button onClick={e => { e.stopPropagation(); setFolders(p => p.filter(x => x.id !== f.id)); setItems(p => p.map(i => i.folderId === f.id ? { ...i, folderId: null } : i)); setSel(null); flash("삭제됨"); }} style={{ position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", background: "#B8544F", border: `2px solid ${BG}`, cursor: "pointer", color: "#fff", fontSize: 7, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>}
+                  {a && <button onClick={e => { e.stopPropagation(); handleDeleteFolder(f.id); }} style={{ position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", background: "#B8544F", border: `2px solid ${BG}`, cursor: "pointer", color: "#fff", fontSize: 7, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>}
                 </div>
               );
             })}
@@ -563,7 +610,7 @@ export default function Keepy() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, padding: "2px 18px 16px" }}>
               {fil.map((item, idx) => (
                 <div key={item.id} style={{ animation: `fadeIn 0.4s ease ${idx * 0.05}s both` }}>
-                  <Card item={item} folder={folders.find(f => f.id === item.folderId)} onClick={() => setDetail(item)} onDel={id => setItems(p => p.filter(i => i.id !== id))} />
+                  <Card item={item} folder={folders.find(f => f.id === item.folderId)} onClick={() => setDetail(item)} onDel={handleDelete} />
                 </div>
               ))}
             </div>
@@ -591,13 +638,13 @@ export default function Keepy() {
             </div>
           </div>
 
-          {showProfile && <ProfileMenu user={user} onLogout={handleLogout} onClose={() => setShowProfile(false)} />}
+          {showProfile && <ProfileMenu user={user} usageCount={usageCount} onLogout={handleLogout} onClose={() => setShowProfile(false)} />}
         </div>
       )}
 
       {memo && <MemoModal onSubmit={handleMemo} onClose={() => setMemo(false)} busy={busy} />}
       {cur && <FolderPopup analysis={cur.analysis} folders={folders} onSelect={saveIt} onCreate={mkSave} onClose={() => saveIt(null)} imageData={cur.imageData} rawMemo={cur.rawMemo} pendingCount={pend.length} batchImages={cur.batchImages} />}
-      {detail && <Detail item={detail} folders={folders} onClose={() => setDetail(null)} onEdit={(id, d) => { setItems(p => p.map(i => i.id === id ? { ...i, ...d } : i)); setDetail(prev => prev ? { ...prev, ...d } : null); }} onCopy={copy} />}
+      {detail && <Detail item={detail} folders={folders} onClose={() => setDetail(null)} onEdit={handleEdit} onCopy={copy} />}
       <Toast msg={toast.msg} show={toast.show} />
     </div>
   );
