@@ -417,15 +417,10 @@ export default function Keepy() {
     const comp = await Promise.all(imgs.map(f => compress(f)));
 
     if (!aiMode) {
-      // AI off: save all images directly without analysis
-      const newItems = comp.map(imageData => ({
-        id: uid(), type: "capture", imageData, rawMemo: null,
-        title: new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
-        summary: "", tags: [], courseSteps: [], folderId: null,
-        createdAt: new Date().toISOString(),
-      }));
-      setItems(p => [...newItems.reverse(), ...p]);
-      flash(`${comp.length}장 저장 완료 ✓`);
+      // AI off: no analysis, but still show folder popup one by one
+      setPend(comp.slice(1));
+      const title = new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      setCur({ imageData: comp[0], analysis: { title, summary: "", tags: [], suggested_folder: null, new_folder_suggestion: null, is_course: false, course_steps: null } });
       return;
     }
 
@@ -447,9 +442,15 @@ export default function Keepy() {
     setItems(p => [{ id: uid(), type: imageData ? "capture" : "memo", imageData: imageData || null, rawMemo: rawMemo || null, title: analysis?.title || "제목 없음", summary: analysis?.summary || "", tags: analysis?.tags || [], courseSteps: analysis?.is_course ? (analysis?.course_steps || []) : [], folderId: fid, createdAt: new Date().toISOString() }, ...p]);
     setCur(null); flash("저장 완료 ✓");
     if (pend.length > 0) {
-      if (!canUseAI()) { flash(`이번 달 한도 도달 — 나머지 ${pend.length}장은 건너뛰었어요`); setPend([]); return; }
-      const [n, ...r] = pend; setPend(r); setBusy(true); addUsage();
-      analyzeImg(n, folders).then(a => { setCur({ imageData: n, analysis: a }); setBusy(false); });
+      const [n, ...r] = pend; setPend(r);
+      if (!aiMode) {
+        const title = new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+        setCur({ imageData: n, analysis: { title, summary: "", tags: [], suggested_folder: null, new_folder_suggestion: null, is_course: false, course_steps: null } });
+      } else {
+        if (!canUseAI()) { flash(`이번 달 한도 도달 — 나머지 ${pend.length + 1}장은 건너뛰었어요`); setPend([]); return; }
+        setBusy(true); addUsage();
+        analyzeImg(n, folders).then(a => { setCur({ imageData: n, analysis: a }); setBusy(false); });
+      }
     }
   };
   const mkSave = (n, ic) => { const nf = { id: uid(), name: n, icon: ic, createdAt: new Date().toISOString() }; setFolders(p => [...p, nf]); saveIt(nf.id); };
