@@ -223,35 +223,53 @@ function MemoModal({ onSubmit, onClose, busy }) {
   );
 }
 
-function FolderPopup({ analysis, folders, onSelect, onCreate, onClose, imageData, rawMemo, pendingCount }) {
+function FolderPopup({ analysis, folders, onSelect, onCreate, onClose, imageData, rawMemo, pendingCount, batchImages }) {
   const [name, setName] = useState(analysis?.new_folder_suggestion || "");
   const [ic, setIc] = useState("📁");
   const [mode, setMode] = useState("pick");
   const sug = folders.find(f => f.name === analysis?.suggested_folder);
+  const isBatch = batchImages && batchImages.length > 1;
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(45,42,35,0.18)", backdropFilter: "blur(8px)", zIndex: 1500, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div onClick={e => e.stopPropagation()} style={{ background: POPUP, borderRadius: "26px 26px 0 0", width: "100%", maxWidth: 520, padding: "24px 24px 36px", maxHeight: "70vh", overflow: "auto", animation: "slideUp 0.4s cubic-bezier(0.16,1,0.3,1)", boxShadow: "0 -12px 48px rgba(0,0,0,0.06)" }}>
         <div style={{ width: 32, height: 3, background: BDR, borderRadius: 2, margin: "0 auto 22px" }} />
 
         {/* Preview card */}
-        <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "14px 16px", background: BG, borderRadius: 14, marginBottom: 18 }}>
-          {imageData ? (
-            <img src={imageData} alt="" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
-          ) : (
-            <div style={{ width: 56, height: 56, borderRadius: 10, background: BDR, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={TXT3} strokeWidth="1.5"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
+        {isBatch ? (
+          <div style={{ padding: "14px 16px", background: BG, borderRadius: 14, marginBottom: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: TXT, fontFamily: "var(--f)" }}>{batchImages.length}장 일괄 저장</span>
+              <span style={{ fontSize: 12, color: A, fontWeight: 600, fontFamily: "var(--f)" }}>폴더 한 번만 선택하면 돼요</span>
             </div>
-          )}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: TXT, fontFamily: "var(--f)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{analysis?.title || "제목 없음"}</div>
-            <div style={{ fontSize: 12, color: TXT3, fontFamily: "var(--f)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{analysis?.summary?.slice(0, 40) || ""}</div>
+            <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
+              {batchImages.slice(0, 8).map((img, i) => (
+                <img key={i} src={img} alt="" style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover", flexShrink: 0, border: `1px solid ${BDR}` }} />
+              ))}
+              {batchImages.length > 8 && (
+                <div style={{ width: 48, height: 48, borderRadius: 8, background: BDR, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 12, color: TXT2, fontWeight: 600, fontFamily: "var(--f)" }}>+{batchImages.length - 8}</div>
+              )}
+            </div>
           </div>
-          {pendingCount > 0 && (
-            <div style={{ background: `${A}18`, borderRadius: 8, padding: "4px 10px", flexShrink: 0 }}>
-              <span style={{ fontSize: 11, color: A, fontWeight: 600, fontFamily: "var(--f)" }}>+{pendingCount}</span>
+        ) : (
+          <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "14px 16px", background: BG, borderRadius: 14, marginBottom: 18 }}>
+            {imageData ? (
+              <img src={imageData} alt="" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} />
+            ) : (
+              <div style={{ width: 56, height: 56, borderRadius: 10, background: BDR, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={TXT3} strokeWidth="1.5"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>
+              </div>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: TXT, fontFamily: "var(--f)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{analysis?.title || "제목 없음"}</div>
+              <div style={{ fontSize: 12, color: TXT3, fontFamily: "var(--f)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{analysis?.summary?.slice(0, 40) || ""}</div>
             </div>
-          )}
-        </div>
+            {pendingCount > 0 && (
+              <div style={{ background: `${A}18`, borderRadius: 8, padding: "4px 10px", flexShrink: 0 }}>
+                <span style={{ fontSize: 11, color: A, fontWeight: 600, fontFamily: "var(--f)" }}>+{pendingCount}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {mode === "pick" ? (<>
           <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 600, color: A, fontFamily: "var(--f)", letterSpacing: "0.06em" }}>폴더 선택</p>
@@ -417,10 +435,9 @@ export default function Keepy() {
     const comp = await Promise.all(imgs.map(f => compress(f)));
 
     if (!aiMode) {
-      // AI off: no analysis, but still show folder popup one by one
-      setPend(comp.slice(1));
-      const title = new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-      setCur({ imageData: comp[0], analysis: { title, summary: "", tags: [], suggested_folder: null, new_folder_suggestion: null, is_course: false, course_steps: null } });
+      // AI off: batch all — show folder popup once, save all to same folder
+      const title = `${comp.length}장 · ${new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
+      setCur({ batchImages: comp, imageData: comp[0], analysis: { title, summary: `${comp.length}장의 캡처`, tags: [], suggested_folder: null, new_folder_suggestion: null, is_course: false, course_steps: null } });
       return;
     }
 
@@ -438,7 +455,23 @@ export default function Keepy() {
 
   const saveIt = fid => {
     if (!cur) return;
-    const { imageData, rawMemo, analysis } = cur;
+    const { imageData, rawMemo, analysis, batchImages } = cur;
+
+    // Batch save (AI off, multiple images)
+    if (batchImages && batchImages.length > 0) {
+      const now = new Date();
+      const newItems = batchImages.map((img, i) => ({
+        id: uid(), type: "capture", imageData: img, rawMemo: null,
+        title: `${now.toLocaleDateString("ko-KR", { month: "short", day: "numeric" })} (${i + 1})`,
+        summary: "", tags: [], courseSteps: [], folderId: fid,
+        createdAt: new Date(now.getTime() + i).toISOString(),
+      }));
+      setItems(p => [...newItems.reverse(), ...p]);
+      setCur(null); flash(`${batchImages.length}장 일괄 저장 완료 ✓`);
+      return;
+    }
+
+    // Single save (AI on)
     setItems(p => [{ id: uid(), type: imageData ? "capture" : "memo", imageData: imageData || null, rawMemo: rawMemo || null, title: analysis?.title || "제목 없음", summary: analysis?.summary || "", tags: analysis?.tags || [], courseSteps: analysis?.is_course ? (analysis?.course_steps || []) : [], folderId: fid, createdAt: new Date().toISOString() }, ...p]);
     setCur(null); flash("저장 완료 ✓");
     if (pend.length > 0) {
@@ -563,7 +596,7 @@ export default function Keepy() {
       )}
 
       {memo && <MemoModal onSubmit={handleMemo} onClose={() => setMemo(false)} busy={busy} />}
-      {cur && <FolderPopup analysis={cur.analysis} folders={folders} onSelect={saveIt} onCreate={mkSave} onClose={() => saveIt(null)} imageData={cur.imageData} rawMemo={cur.rawMemo} pendingCount={pend.length} />}
+      {cur && <FolderPopup analysis={cur.analysis} folders={folders} onSelect={saveIt} onCreate={mkSave} onClose={() => saveIt(null)} imageData={cur.imageData} rawMemo={cur.rawMemo} pendingCount={pend.length} batchImages={cur.batchImages} />}
       {detail && <Detail item={detail} folders={folders} onClose={() => setDetail(null)} onEdit={(id, d) => { setItems(p => p.map(i => i.id === id ? { ...i, ...d } : i)); setDetail(prev => prev ? { ...prev, ...d } : null); }} onCopy={copy} />}
       <Toast msg={toast.msg} show={toast.show} />
     </div>
