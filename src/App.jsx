@@ -383,6 +383,7 @@ export default function Keepy() {
   const [toast, setToast] = useState({ msg: "", show: false });
   const [ok, setOk] = useState(false);
   const [memo, setMemo] = useState(false);
+  const [aiMode, setAiMode] = useState(true);
   const fRef = useRef(null);
   const [drag, setDrag] = useState(false);
 
@@ -411,10 +412,24 @@ export default function Keepy() {
   const handleLogout = () => { setUser(null); sv(SK_U, null); setShowProfile(false); setItems([]); setFolders([]); setOk(false); };
 
   const handleFiles = async files => {
-    if (!canUseAI()) { flash(`이번 달 AI 분석 한도(${MONTHLY_LIMIT}회)를 모두 사용했어요`); return; }
-    const imgs = Array.from(files).filter(f => f.type.startsWith("image/")).slice(0, 5);
+    const imgs = Array.from(files).filter(f => f.type.startsWith("image/"));
     if (!imgs.length) return;
     const comp = await Promise.all(imgs.map(f => compress(f)));
+
+    if (!aiMode) {
+      // AI off: save all images directly without analysis
+      const newItems = comp.map(imageData => ({
+        id: uid(), type: "capture", imageData, rawMemo: null,
+        title: new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+        summary: "", tags: [], courseSteps: [], folderId: null,
+        createdAt: new Date().toISOString(),
+      }));
+      setItems(p => [...newItems.reverse(), ...p]);
+      flash(`${comp.length}장 저장 완료 ✓`);
+      return;
+    }
+
+    if (!canUseAI()) { flash(`이번 달 AI 분석 한도(${MONTHLY_LIMIT}회)를 모두 사용했어요`); return; }
     setPend(comp.slice(1)); setBusy(true);
     addUsage();
     const a = await analyzeImg(comp[0], folders);
@@ -532,6 +547,13 @@ export default function Keepy() {
                 {busy ? (<><div style={{ width: 16, height: 16, border: `2px solid ${BDR}`, borderTopColor: A, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} /><span style={{ fontSize: 13, color: A, fontWeight: 600, fontFamily: "var(--f)" }}>분석 중{pend.length > 0 ? ` · ${pend.length}장 대기` : ""}...</span></>) : (<><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={TXT3} strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg><span style={{ fontSize: 13, color: TXT2, fontWeight: 500, fontFamily: "var(--f)" }}>캡처 드롭 또는 탭</span></>)}
                 <input ref={fRef} type="file" accept="image/*" multiple onChange={e => { handleFiles(e.target.files); e.target.value = ""; }} style={{ display: "none" }} />
               </div>
+              <button onClick={() => { setAiMode(p => !p); flash(aiMode ? "AI 분석 OFF — 바로 저장" : "AI 분석 ON — 자동 정리"); }}
+                style={{ width: 52, height: 52, borderRadius: 16, border: `1.5px solid ${aiMode ? A : BDR}`, background: aiMode ? `${A}15` : CARD, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 2px 12px rgba(0,0,0,0.03)", gap: 2, transition: "all 0.2s" }}>
+                <span style={{ fontSize: 14 }}>AI</span>
+                <div style={{ width: 24, height: 12, borderRadius: 6, background: aiMode ? A : BDR, position: "relative", transition: "all 0.2s" }}>
+                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#fff", position: "absolute", top: 1, left: aiMode ? 13 : 1, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.15)" }} />
+                </div>
+              </button>
             </div>
           </div>
 
