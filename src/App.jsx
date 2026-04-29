@@ -266,7 +266,7 @@ function MemoModal({ onSubmit, onClose, busy }) {
   );
 }
 
-function FolderPopup({ analysis, folders, onSelect, onCreate, onClose, imageData, rawMemo, pendingCount, batchImages }) {
+function FolderPopup({ analysis, folders, onSelect, onCreate, onClose, imageData, rawMemo, pendingCount, batchImages, saving }) {
   const [name, setName] = useState(analysis?.new_folder_suggestion || "");
   const [ic, setIc] = useState("📁");
   const [mode, setMode] = useState("pick");
@@ -304,18 +304,27 @@ function FolderPopup({ analysis, folders, onSelect, onCreate, onClose, imageData
         {mode === "pick" ? (<>
           <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 600, color: A, fontFamily: "var(--f)", letterSpacing: "0.06em" }}>폴더 선택</p>
           <p style={{ margin: "0 0 18px", fontSize: 14, color: TXT2, fontFamily: "var(--f)" }}>AI 추천 → <span style={{ color: A, fontWeight: 600 }}>{analysis?.suggested_folder || analysis?.new_folder_suggestion || "새 폴더"}</span></p>
+          {saving ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "30px 0" }}>
+              <div style={{ width: 20, height: 20, border: `2.5px solid ${BDR}`, borderTopColor: A, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+              <span style={{ fontSize: 14, color: A, fontWeight: 600, fontFamily: "var(--f)" }}>저장 중...</span>
+            </div>
+          ) : (<>
           {sug && (<button onClick={() => onSelect(sug.id)} style={{ width: "100%", padding: "16px 18px", borderRadius: 14, border: `1.5px solid ${A}33`, background: `${A}0A`, cursor: "pointer", marginBottom: 8, display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}><div style={{ width: 40, height: 40, borderRadius: 12, background: `${A}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{sug.icon}</div><div><div style={{ fontSize: 15, fontWeight: 600, color: TXT, fontFamily: "var(--f)" }}>{sug.name}</div><div style={{ fontSize: 11, color: A, fontFamily: "var(--f)", fontWeight: 500, marginTop: 2 }}>AI 추천</div></div></button>)}
           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
             {folders.filter(f => f.id !== sug?.id).map(f => (<button key={f.id} onClick={() => onSelect(f.id)} style={{ width: "100%", padding: "14px 18px", borderRadius: 12, border: `1px solid ${BDR}`, background: CARD, cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}><div style={{ width: 36, height: 36, borderRadius: 10, background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>{f.icon}</div><span style={{ fontSize: 14, fontWeight: 500, color: TXT, fontFamily: "var(--f)" }}>{f.name}</span></button>))}
           </div>
           <button onClick={() => setMode("new")} style={{ width: "100%", padding: "14px", borderRadius: 12, border: `1.5px dashed ${BDR}`, background: "transparent", cursor: "pointer", color: TXT3, fontSize: 14, fontWeight: 600, fontFamily: "var(--f)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>+ 새 폴더</button>
+          </>)}
         </>) : (<>
           <p style={{ margin: "0 0 18px", fontSize: 11, fontWeight: 600, color: A, fontFamily: "var(--f)", letterSpacing: "0.06em" }}>새 폴더 만들기</p>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="폴더 이름" autoFocus style={{ width: "100%", padding: "14px 18px", borderRadius: 12, background: BG, border: `1.5px solid ${BDR}`, color: TXT, fontSize: 16, fontWeight: 600, fontFamily: "var(--f)", outline: "none", boxSizing: "border-box", marginBottom: 16 }} onFocus={e => e.target.style.borderColor = A} onBlur={e => e.target.style.borderColor = BDR} />
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 22 }}>{ICONS.map(i => (<button key={i} onClick={() => setIc(i)} style={{ width: 40, height: 40, borderRadius: 10, border: ic === i ? `2px solid ${A}` : `1.5px solid ${BDR}`, background: ic === i ? `${A}12` : CARD, cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>{i}</button>))}</div>
           <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={() => setMode("pick")} style={{ flex: 1, padding: "14px", borderRadius: 12, border: `1.5px solid ${BDR}`, background: CARD, color: TXT2, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "var(--f)" }}>뒤로</button>
-            <button onClick={() => name.trim() && onCreate(name.trim(), ic)} style={{ flex: 2, padding: "14px", borderRadius: 12, border: "none", background: name.trim() ? A : BDR, color: name.trim() ? "#fff" : TXT3, fontSize: 14, fontWeight: 600, cursor: name.trim() ? "pointer" : "default", fontFamily: "var(--f)" }}>만들기</button>
+            <button onClick={() => !saving && setMode("pick")} style={{ flex: 1, padding: "14px", borderRadius: 12, border: `1.5px solid ${BDR}`, background: CARD, color: TXT2, fontSize: 14, fontWeight: 600, cursor: saving ? "wait" : "pointer", fontFamily: "var(--f)", opacity: saving ? 0.5 : 1 }}>뒤로</button>
+            <button onClick={() => name.trim() && !saving && onCreate(name.trim(), ic)} style={{ flex: 2, padding: "14px", borderRadius: 12, border: "none", background: name.trim() && !saving ? A : BDR, color: name.trim() && !saving ? "#fff" : TXT3, fontSize: 14, fontWeight: 600, cursor: name.trim() && !saving ? "pointer" : "default", fontFamily: "var(--f)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              {saving ? (<><div style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />저장 중...</>) : "만들기"}
+            </button>
           </div>
         </>)}
       </div>
@@ -410,6 +419,7 @@ export default function Keepy() {
   const [aiMode, setAiMode] = useState(true);
   const [usageCount, setUsageCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const fRef = useRef(null);
   const [drag, setDrag] = useState(false);
 
@@ -471,7 +481,8 @@ export default function Keepy() {
   };
 
   const saveIt = async fid => {
-    if (!cur) return;
+    if (!cur || saving) return;
+    setSaving(true);
     const { imageData, rawMemo, analysis, batchImages } = cur;
 
     if (batchImages && batchImages.length > 0) {
@@ -484,14 +495,14 @@ export default function Keepy() {
       }));
       for (const item of newItems) { await dbSaveItem(user.email, item); }
       setItems(p => [...newItems.reverse(), ...p]);
-      setCur(null); flash(`${batchImages.length}장 일괄 저장 완료 ✓`);
+      setCur(null); setSaving(false); flash(`${batchImages.length}장 일괄 저장 완료 ✓`);
       return;
     }
 
     const newItem = { id: uid(), type: imageData ? "capture" : "memo", imageData: imageData || null, rawMemo: rawMemo || null, title: analysis?.title || "제목 없음", summary: analysis?.summary || "", tags: analysis?.tags || [], courseSteps: analysis?.is_course ? (analysis?.course_steps || []) : [], folderId: fid, createdAt: new Date().toISOString() };
     await dbSaveItem(user.email, newItem);
     setItems(p => [newItem, ...p]);
-    setCur(null); flash("저장 완료 ✓");
+    setCur(null); setSaving(false); flash("저장 완료 ✓");
 
     if (pend.length > 0) {
       const [n, ...r] = pend; setPend(r);
@@ -507,10 +518,12 @@ export default function Keepy() {
   };
 
   const mkSave = async (n, ic) => {
+    if (saving) return;
+    setSaving(true);
     const nf = { id: uid(), name: n, icon: ic, createdAt: new Date().toISOString() };
     await dbSaveFolder(user.email, nf);
     setFolders(p => [...p, nf]);
-    saveIt(nf.id);
+    await saveIt(nf.id);
   };
 
   const handleDelete = async id => {
@@ -643,7 +656,7 @@ export default function Keepy() {
       )}
 
       {memo && <MemoModal onSubmit={handleMemo} onClose={() => setMemo(false)} busy={busy} />}
-      {cur && <FolderPopup analysis={cur.analysis} folders={folders} onSelect={saveIt} onCreate={mkSave} onClose={() => saveIt(null)} imageData={cur.imageData} rawMemo={cur.rawMemo} pendingCount={pend.length} batchImages={cur.batchImages} />}
+      {cur && <FolderPopup analysis={cur.analysis} folders={folders} onSelect={saveIt} onCreate={mkSave} onClose={() => !saving && saveIt(null)} imageData={cur.imageData} rawMemo={cur.rawMemo} pendingCount={pend.length} batchImages={cur.batchImages} saving={saving} />}
       {detail && <Detail item={detail} folders={folders} onClose={() => setDetail(null)} onEdit={handleEdit} onCopy={copy} />}
       <Toast msg={toast.msg} show={toast.show} />
     </div>
