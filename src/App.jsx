@@ -551,15 +551,15 @@ export default function Keepy() {
           {/* Folder Grid */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 20px 16px" }}>
             {filteredFolders.map(f => (
-              <button key={f.id} onClick={() => setOpenFolder(f)} style={{ background: CARD, borderRadius: 10, padding: "8px 12px", border: `0.5px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8, height: 36, cursor: "pointer", transition: "all 0.15s" }}>
-                <span style={{ fontSize: 18 }}>{f.icon}</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: TXT }}>{f.name}</span>
+              <button key={f.id} onClick={() => setOpenFolder(f)} style={{ background: CARD, borderRadius: 10, padding: "8px 12px", border: `0.5px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8, height: 46, cursor: "pointer", transition: "all 0.15s" }}>
+                <span style={{ fontSize: 20 }}>{f.icon}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: TXT }}>{f.name}</span>
               </button>
             ))}
             {(!q || "미분류".includes(q)) && uncategorizedCount > 0 && (
-              <button onClick={() => setOpenFolder("uncategorized")} style={{ background: CARD, borderRadius: 10, padding: "8px 12px", border: `0.5px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8, height: 36, cursor: "pointer" }}>
-                <span style={{ fontSize: 18 }}>📌</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: TXT }}>미분류</span>
+              <button onClick={() => setOpenFolder("uncategorized")} style={{ background: CARD, borderRadius: 10, padding: "8px 12px", border: `0.5px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8, height: 46, cursor: "pointer" }}>
+                <span style={{ fontSize: 20 }}>📌</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: TXT }}>미분류</span>
               </button>
             )}
           </div>
