@@ -475,6 +475,11 @@ export default function Keepy() {
 
   const mkSave = async (n, ic) => { if (saving) return; setSaving(true); const nf = { id: uid(), name: n, icon: ic, createdAt: new Date().toISOString() }; await dbSaveFolder(user.email, nf); setFolders(p => [...p, nf]); await saveIt(nf.id); };
 
+  const handleEdit = async (id, data) => {
+    await dbUpdateItem(user.email, id, data);
+    setItems(p => p.map(i => i.id === id ? { ...i, ...data } : i));
+  };
+
   const handleDeleteItems = async ids => { await dbDeleteItems(user.email, ids); setItems(p => p.filter(i => !ids.includes(i.id))); flash(`${ids.length}장 삭제됨`); };
 
   const handleDeleteFolder = async fid => { await dbDeleteFolder(user.email, fid); setFolders(p => p.filter(f => f.id !== fid)); setItems(p => p.map(i => i.folderId === fid ? { ...i, folderId: null } : i)); setOpenFolder(null); flash("폴더 삭제됨"); };
@@ -519,7 +524,7 @@ export default function Keepy() {
           items={openFolder === "uncategorized" ? items.filter(i => !i.folderId) : items.filter(i => i.folderId === openFolder.id)}
           onBack={() => setOpenFolder(null)}
           onDelete={handleDeleteItems}
-          onEdit={() => {}}
+          onEdit={handleEdit}
           onCopy={copy}
           folders={folders}
         />
@@ -546,15 +551,15 @@ export default function Keepy() {
           {/* Folder Grid */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 20px 16px" }}>
             {filteredFolders.map(f => (
-              <button key={f.id} onClick={() => setOpenFolder(f)} style={{ background: CARD, borderRadius: 10, padding: "8px 12px", border: `0.5px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8, height: 46, cursor: "pointer", transition: "all 0.15s" }}>
-                <span style={{ fontSize: 20 }}>{f.icon}</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: TXT }}>{f.name}</span>
+              <button key={f.id} onClick={() => setOpenFolder(f)} style={{ background: CARD, borderRadius: 10, padding: "8px 12px", border: `0.5px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8, height: 36, cursor: "pointer", transition: "all 0.15s" }}>
+                <span style={{ fontSize: 18 }}>{f.icon}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: TXT }}>{f.name}</span>
               </button>
             ))}
             {(!q || "미분류".includes(q)) && uncategorizedCount > 0 && (
-              <button onClick={() => setOpenFolder("uncategorized")} style={{ background: CARD, borderRadius: 10, padding: "8px 12px", border: `0.5px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8, height: 46, cursor: "pointer" }}>
-                <span style={{ fontSize: 20 }}>📌</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: TXT }}>미분류</span>
+              <button onClick={() => setOpenFolder("uncategorized")} style={{ background: CARD, borderRadius: 10, padding: "8px 12px", border: `0.5px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8, height: 36, cursor: "pointer" }}>
+                <span style={{ fontSize: 18 }}>📌</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: TXT }}>미분류</span>
               </button>
             )}
           </div>
