@@ -210,7 +210,7 @@ function FolderPopup({ analysis, folders, onSelect, onCreate, onClose, imageData
           <p style={{ margin: "0 0 18px", fontSize: 14, color: TXT2 }}>AI 추천 → <span style={{ color: A, fontWeight: 600 }}>{analysis?.suggested_folder || analysis?.new_folder_suggestion || "새 폴더"}</span></p>
           {saving ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "30px 0" }}><div style={{ width: 20, height: 20, border: `2.5px solid ${BDR}`, borderTopColor: A, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} /><span style={{ fontSize: 14, color: A, fontWeight: 600 }}>저장 중...</span></div> : (<>
           {sug && <button onClick={() => onSelect(sug.id)} style={{ width: "100%", padding: "16px 18px", borderRadius: 14, border: `1.5px solid ${A}33`, background: `${A}0A`, cursor: "pointer", marginBottom: 8, display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}><div style={{ width: 40, height: 40, borderRadius: 12, background: `${A}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{sug.icon}</div><div><div style={{ fontSize: 15, fontWeight: 600, color: TXT }}>{sug.name}</div><div style={{ fontSize: 11, color: A, fontWeight: 500, marginTop: 2 }}>AI 추천</div></div></button>}
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>{folders.filter(f => f.id !== sug?.id).map(f => <button key={f.id} onClick={() => onSelect(f.id)} style={{ width: "100%", padding: "14px 18px", borderRadius: 12, border: `1px solid ${BDR}`, background: CARD, cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}><div style={{ width: 36, height: 46, borderRadius: 10, background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>{f.icon}</div><span style={{ fontSize: 14, fontWeight: 500, color: TXT }}>{f.name}</span></button>)}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>{folders.filter(f => f.id !== sug?.id).map(f => <button key={f.id} onClick={() => onSelect(f.id)} style={{ width: "100%", padding: "14px 18px", borderRadius: 12, border: `1px solid ${BDR}`, background: CARD, cursor: "pointer", display: "flex", alignItems: "center", gap: 14, textAlign: "left" }}><div style={{ width: 36, height: 36, borderRadius: 10, background: BG, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, flexShrink: 0 }}>{f.icon}</div><span style={{ fontSize: 14, fontWeight: 500, color: TXT }}>{f.name}</span></button>)}</div>
           <button onClick={() => setMode("new")} style={{ width: "100%", padding: "14px", borderRadius: 12, border: `1.5px dashed ${BDR}`, background: "transparent", cursor: "pointer", color: TXT3, fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>+ 새 폴더</button>
           </>)}
         </>) : (<>
@@ -254,14 +254,53 @@ function ImageViewer({ images, startIndex, onClose }) {
   );
 }
 
+// ─── Detail Modal ───
+function DetailModal({ item, folders, onClose, onEdit, onCopy }) {
+  const [ed, setEd] = useState(false);
+  const [d, setD] = useState({ title: item.title, summary: item.summary, folderId: item.folderId });
+  const fo = folders.find(f => f.id === item.folderId);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(45,42,35,0.15)", backdropFilter: "blur(12px)", zIndex: 1600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: POPUP, borderRadius: 26, maxWidth: 460, width: "100%", maxHeight: "90vh", overflow: "auto", boxShadow: "0 24px 80px rgba(0,0,0,0.08)" }}>
+        {item.imageData ? (
+          <div style={{ position: "relative" }}><img src={item.imageData} style={{ width: "100%", maxHeight: 260, objectFit: "contain", background: BG, borderRadius: "26px 26px 0 0" }} /><button onClick={onClose} style={{ position: "absolute", top: 16, right: 16, background: "rgba(248,250,248,0.9)", border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", color: TXT2, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button></div>
+        ) : <div style={{ display: "flex", justifyContent: "flex-end", padding: "18px 18px 0" }}><button onClick={onClose} style={{ background: BG, border: "none", borderRadius: "50%", width: 36, height: 36, cursor: "pointer", color: TXT2, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button></div>}
+        <div style={{ padding: item.imageData ? "20px 24px 26px" : "8px 24px 26px" }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            {fo && <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 14px", background: BG, borderRadius: 8 }}><span style={{ fontSize: 13 }}>{fo.icon}</span><span style={{ fontSize: 12, color: TXT2, fontWeight: 600 }}>{fo.name}</span></div>}
+            {item.type === "memo" && <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", background: `${A}12`, borderRadius: 8 }}><span style={{ fontSize: 12, color: A, fontWeight: 600 }}>메모</span></div>}
+          </div>
+          {ed ? (<>
+            <input value={d.title} onChange={e => setD({ ...d, title: e.target.value })} style={{ width: "100%", background: BG, border: `1.5px solid ${BDR}`, borderRadius: 12, padding: "12px 16px", color: TXT, fontSize: 18, fontWeight: 700, fontFamily: "var(--f)", outline: "none", marginBottom: 10, boxSizing: "border-box" }} />
+            <textarea value={d.summary} onChange={e => setD({ ...d, summary: e.target.value })} rows={5} style={{ width: "100%", background: BG, border: `1.5px solid ${BDR}`, borderRadius: 12, padding: "12px 16px", color: TXT2, fontSize: 14, lineHeight: 1.8, fontFamily: "var(--f)", outline: "none", resize: "vertical", marginBottom: 10, boxSizing: "border-box" }} />
+            <select value={d.folderId || ""} onChange={e => setD({ ...d, folderId: e.target.value || null })} style={{ width: "100%", background: BG, border: `1.5px solid ${BDR}`, borderRadius: 12, padding: "12px 16px", color: TXT2, fontSize: 14, fontFamily: "var(--f)", outline: "none", marginBottom: 16, boxSizing: "border-box" }}><option value="">폴더 없음</option>{folders.map(f => <option key={f.id} value={f.id}>{f.icon} {f.name}</option>)}</select>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setEd(false)} style={{ flex: 1, padding: "13px", borderRadius: 12, border: `1.5px solid ${BDR}`, background: CARD, color: TXT2, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "var(--f)" }}>취소</button>
+              <button onClick={() => { onEdit(item.id, d); setEd(false); onClose(); }} style={{ flex: 2, padding: "13px", borderRadius: 12, border: "none", background: A, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "var(--f)" }}>저장</button>
+            </div>
+          </>) : (<>
+            <h2 style={{ margin: "0 0 10px", fontSize: 21, fontWeight: 700, color: TXT, lineHeight: 1.3 }}>{item.title}</h2>
+            {item.summary && <p style={{ margin: "0 0 16px", fontSize: 14.5, color: "#4A5548", lineHeight: 1.85, whiteSpace: "pre-wrap" }}>{item.summary}</p>}
+            {item.tags?.length > 0 && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>{item.tags.map((t, i) => <span key={i} style={{ fontSize: 12, color: TXT2, background: BG, fontWeight: 500, borderRadius: 6, padding: "4px 12px" }}>#{t}</span>)}</div>}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setEd(true)} style={{ flex: 1, padding: "13px", borderRadius: 12, border: `1.5px solid ${BDR}`, background: CARD, color: TXT2, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "var(--f)" }}>수정</button>
+              <button onClick={() => onCopy(item)} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "none", background: BG, color: TXT, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "var(--f)" }}>복사</button>
+            </div>
+            <div style={{ marginTop: 14, fontSize: 11, color: TXT3 }}>{new Date(item.createdAt).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
+          </>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Folder Inside View ───
 function FolderView({ folder, items, onBack, onDelete, onEdit, onCopy, folders }) {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState(new Set());
-  const [viewer, setViewer] = useState(null); // { images, startIndex }
+  const [viewer, setViewer] = useState(null);
   const [detail, setDetail] = useState(null);
 
-  // Group items by upload batch (same minute = same bundle)
   const bundles = [];
   const used = new Set();
   items.forEach((item, i) => {
@@ -279,9 +318,13 @@ function FolderView({ folder, items, onBack, onDelete, onEdit, onCopy, folders }
   const toggleSelect = id => { const s = new Set(selected); s.has(id) ? s.delete(id) : s.add(id); setSelected(s); };
   const handleDeleteSelected = () => { onDelete([...selected]); setSelected(new Set()); setSelectMode(false); };
 
+  const handleItemClick = (item) => {
+    if (selectMode) { toggleSelect(item.id); return; }
+    setDetail(item);
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: BG, fontFamily: "var(--f)" }}>
-      {/* Header */}
       <div style={{ padding: "20px 18px 10px", position: "sticky", top: 0, background: BG, zIndex: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={TXT2} strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg></button>
@@ -291,14 +334,13 @@ function FolderView({ folder, items, onBack, onDelete, onEdit, onCopy, folders }
         </div>
       </div>
 
-      {/* Content */}
       <div style={{ padding: "4px 14px 120px" }}>
         {bundles.map((bundle, bi) => {
           if (bundle.length === 1) {
             const item = bundle[0];
             return (
               <div key={item.id} style={{ background: CARD, borderRadius: 14, border: `1px solid ${selected.has(item.id) ? A : BDR}`, marginBottom: 10, overflow: "hidden" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", cursor: "pointer" }} onClick={() => selectMode ? toggleSelect(item.id) : item.imageData ? setViewer({ images: [item.imageData], startIndex: 0 }) : setDetail(item)}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", cursor: "pointer" }} onClick={() => handleItemClick(item)}>
                   {selectMode && <div style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${selected.has(item.id) ? A : BDR}`, background: selected.has(item.id) ? A : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{selected.has(item.id) && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>}</div>}
                   {item.imageData ? <img src={item.imageData} style={{ width: 52, height: 52, borderRadius: 10, objectFit: "cover", flexShrink: 0 }} /> : <div style={{ width: 52, height: 52, borderRadius: 10, background: BG, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={TXT3} strokeWidth="1.5"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg></div>}
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -310,22 +352,22 @@ function FolderView({ folder, items, onBack, onDelete, onEdit, onCopy, folders }
               </div>
             );
           }
-          // Bundle
           const bundleTitle = bundle[0].title || `${new Date(bundle[0].createdAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}`;
           const allSelected = bundle.every(i => selected.has(i.id));
           return (
             <div key={bi} style={{ background: CARD, borderRadius: 14, border: `1px solid ${allSelected ? A : BDR}`, marginBottom: 10, overflow: "hidden" }}>
               <div style={{ padding: "12px 14px 8px", display: "flex", alignItems: "center", gap: 10 }}>
                 {selectMode && <div onClick={() => { const s = new Set(selected); if (allSelected) bundle.forEach(i => s.delete(i.id)); else bundle.forEach(i => s.add(i.id)); setSelected(s); }} style={{ width: 22, height: 22, borderRadius: "50%", border: `2px solid ${allSelected ? A : BDR}`, background: allSelected ? A : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" }}>{allSelected && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>}</div>}
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1 }} onClick={() => !selectMode && setDetail(bundle[0])} style={{ cursor: selectMode ? "default" : "pointer" }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: TXT }}>{bundleTitle}</div>
                   <div style={{ fontSize: 10, color: TXT3, marginTop: 2 }}>{new Date(bundle[0].createdAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })} · {bundle.length}장</div>
                 </div>
               </div>
               <div style={{ display: "flex", gap: 4, padding: "0 14px 12px", overflowX: "auto" }}>
                 {bundle.filter(i => i.imageData).map((item, i) => (
-                  <img key={item.id} src={item.imageData} onClick={() => !selectMode && setViewer({ images: bundle.filter(x => x.imageData).map(x => x.imageData), startIndex: i })}
-                    style={{ width: 72, height: 72, borderRadius: 10, objectFit: "cover", flexShrink: 0, cursor: selectMode ? "default" : "pointer", border: selected.has(item.id) ? `2px solid ${A}` : `1px solid ${BDR}` }} />
+                  <img key={item.id} src={item.imageData}
+                    onClick={() => selectMode ? toggleSelect(item.id) : setViewer({ images: bundle.filter(x => x.imageData).map(x => x.imageData), startIndex: i })}
+                    style={{ width: 72, height: 72, borderRadius: 10, objectFit: "cover", flexShrink: 0, cursor: "pointer", border: selected.has(item.id) ? `2px solid ${A}` : `1px solid ${BDR}` }} />
                 ))}
               </div>
             </div>
@@ -333,18 +375,16 @@ function FolderView({ folder, items, onBack, onDelete, onEdit, onCopy, folders }
         })}
       </div>
 
-      {/* Select mode bottom bar */}
       {selectMode && selected.size > 0 && (
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, padding: "12px 20px 32px", background: `linear-gradient(to top, ${BG} 80%, transparent)`, zIndex: 100 }}>
-          <div style={{ maxWidth: 520, margin: "0 auto", display: "flex", gap: 10 }}>
-            <button onClick={handleDeleteSelected} style={{ flex: 1, padding: "14px", borderRadius: 14, border: "none", background: "#B8544F", color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: "var(--f)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-              {selected.size}장 삭제
-            </button>
+          <div style={{ maxWidth: 520, margin: "0 auto" }}>
+            <button onClick={handleDeleteSelected} style={{ width: "100%", padding: "14px", borderRadius: 14, border: "none", background: "#B8544F", color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: "var(--f)", cursor: "pointer" }}>{selected.size}장 삭제</button>
           </div>
         </div>
       )}
 
       {viewer && <ImageViewer images={viewer.images} startIndex={viewer.startIndex} onClose={() => setViewer(null)} />}
+      {detail && <DetailModal item={detail} folders={folders} onClose={() => setDetail(null)} onEdit={(id, d) => { onEdit(id, d); setDetail(prev => prev ? { ...prev, ...d } : null); }} onCopy={onCopy} />}
     </div>
   );
 }
@@ -506,15 +546,15 @@ export default function Keepy() {
           {/* Folder Grid */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 20px 16px" }}>
             {filteredFolders.map(f => (
-              <button key={f.id} onClick={() => setOpenFolder(f)} style={{ background: CARD, borderRadius: 10, padding: "8px 12px", border: `0.5px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8, height: 56, cursor: "pointer", transition: "all 0.15s" }}>
-                <span style={{ fontSize: 20 }}>{f.icon}</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: TXT }}>{f.name}</span>
+              <button key={f.id} onClick={() => setOpenFolder(f)} style={{ background: CARD, borderRadius: 10, padding: "8px 12px", border: `0.5px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8, height: 36, cursor: "pointer", transition: "all 0.15s" }}>
+                <span style={{ fontSize: 18 }}>{f.icon}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: TXT }}>{f.name}</span>
               </button>
             ))}
             {(!q || "미분류".includes(q)) && uncategorizedCount > 0 && (
-              <button onClick={() => setOpenFolder("uncategorized")} style={{ background: CARD, borderRadius: 10, padding: "8px 12px", border: `0.5px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8, height: 56, cursor: "pointer" }}>
-                <span style={{ fontSize: 20 }}>📌</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: TXT }}>미분류</span>
+              <button onClick={() => setOpenFolder("uncategorized")} style={{ background: CARD, borderRadius: 10, padding: "8px 12px", border: `0.5px solid ${BDR}`, display: "flex", alignItems: "center", gap: 8, height: 36, cursor: "pointer" }}>
+                <span style={{ fontSize: 18 }}>📌</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: TXT }}>미분류</span>
               </button>
             )}
           </div>
